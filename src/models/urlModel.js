@@ -1,12 +1,12 @@
 const pool = require('../config/database');
 
-async function saveUrl(shortCode, originalUrl, customAlias = null) {
+async function saveUrl(shortCode, originalUrl, customAlias = null, expiresAt = null) {
   const query = `
-    INSERT INTO urls (short_code, original_url, custom_alias)
-    VALUES ($1, $2, $3)
+    INSERT INTO urls (short_code, original_url, custom_alias, expires_at)
+    VALUES ($1, $2, $3, $4)
     RETURNING *;
   `;
-  const values = [shortCode, originalUrl, customAlias];
+  const values = [shortCode, originalUrl, customAlias, expiresAt];
   const result = await pool.query(query, values);
   return result.rows[0];
 }
@@ -23,4 +23,13 @@ async function isShortCodeExists(shortCode) {
   return result.rowCount > 0;
 }
 
-module.exports = { saveUrl, findByShortCode, isShortCodeExists };
+async function incrementClickCount(shortCode) {
+  const query = `
+    UPDATE urls
+    SET click_count = click_count + 1
+    WHERE short_code = $1;
+  `;
+  await pool.query(query, [shortCode]);
+}
+
+module.exports = { saveUrl, findByShortCode, isShortCodeExists, incrementClickCount };

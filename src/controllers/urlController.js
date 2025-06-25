@@ -1,9 +1,10 @@
 const { generateShortCode } = require('../utils/shortCodeGenerator');
-const { saveUrl, findByShortCode, isShortCodeExists } = require('../models/urlModel');
+const { saveUrl, findByShortCode, isShortCodeExists, incrementClickCount } = require('../models/urlModel');
+const { isUrlMalicious } = require('../utils/urlValidator'); // Malicious URL kontrolü
 
 // Kısa URL oluşturma
 exports.shortenUrl = async (req, res) => {
-  let { originalUrl, customAlias } = req.body;
+  let { originalUrl, customAlias, expiresAt } = req.body;
 
   if (!originalUrl) {
     return res.status(400).json({ error: 'originalUrl alanı zorunludur' });
@@ -13,6 +14,11 @@ exports.shortenUrl = async (req, res) => {
     new URL(originalUrl);
   } catch (err) {
     return res.status(400).json({ error: 'Geçersiz URL formatı' });
+  }
+
+  // Malicious URL kontrolü
+  if (isUrlMalicious(originalUrl)) {
+    return res.status(400).json({ error: 'Malicious URL tespit edildi.' });
   }
 
   // Custom alias verilmişse kontrol et
@@ -26,8 +32,18 @@ exports.shortenUrl = async (req, res) => {
     customAlias = generateShortCode();
   }
 
+  // expiresAt varsa Date objesine çevir, yoksa null bırak
+  if (expiresAt) {
+    expiresAt = new Date(expiresAt);
+    if (isNaN(expiresAt)) {
+      return res.status(400).json({ error: 'Geçersiz expiresAt formatı' });
+    }
+  } else {
+    expiresAt = null;
+  }
+
   try {
-    const saved = await saveUrl(customAlias, originalUrl, req.body.customAlias || null);
+    const saved = await saveUrl(customAlias, originalUrl, customAlias || null, expiresAt);
 
     return res.status(201).json({
       message: 'Kısa URL oluşturuldu',
@@ -58,6 +74,9 @@ exports.redirectUrl = async (req, res) => {
     if (urlEntry.expires_at && new Date() > urlEntry.expires_at) {
       return res.status(410).send('URL’nin süresi dolmuş.');
     }
+
+    // Click count artırma
+    await incrementClickCount(shortCode);
 
     return res.redirect(urlEntry.original_url);
   } catch (error) {
