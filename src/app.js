@@ -7,6 +7,10 @@ const urlRoutes = require('./routes/urlRoutes');
 
 const app = express();
 
+const analyticsRoutes = require('./routes/analyticsRoutes');
+app.use('/api/analytics', analyticsRoutes);
+
+
 app.use(express.json());
 app.use(cors());
 app.use(helmet());

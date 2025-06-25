@@ -1,5 +1,7 @@
 const { generateShortCode } = require('../utils/shortCodeGenerator');
 const { saveUrl, findByShortCode, isShortCodeExists, incrementClickCount } = require('../models/urlModel');
+const {  saveAnalytics } = require('../models/analyticsModel');
+
 const { isUrlMalicious } = require('../utils/urlValidator'); // Malicious URL kontrolü
 
 // Kısa URL oluşturma
@@ -77,6 +79,18 @@ exports.redirectUrl = async (req, res) => {
 
     // Click count artırma
     await incrementClickCount(shortCode);
+
+    // İstek atan IP adresini al
+    const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.ip;
+    
+    // Analytics kaydetme burada
+    await saveAnalytics(
+      urlEntry.id,
+      ipAddress,
+      req.get('User-Agent') || '',
+      req.get('Referer') || ''
+    );
+
 
     return res.redirect(urlEntry.original_url);
   } catch (error) {
