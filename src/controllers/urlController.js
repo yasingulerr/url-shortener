@@ -3,6 +3,7 @@ const { saveUrl, findByShortCode, isShortCodeExists, incrementClickCount } = req
 const {  saveAnalytics } = require('../models/analyticsModel');
 
 const { isUrlMalicious } = require('../utils/urlValidator'); // Malicious URL kontrolü
+const redisClient = require('../config/redis');
 
 // Kısa URL oluşturma
 exports.shortenUrl = async (req, res) => {
@@ -63,10 +64,20 @@ exports.redirectUrl = async (req, res) => {
   const { shortCode } = req.params;
 
   try {
-    const urlEntry = await findByShortCode(shortCode);
+ // Önce Redis'ten cache kontrolü yap
+const cachedData = await redisClient.get(shortCode);
+let urlEntry;
 
-    if (!urlEntry) {
-      return res.status(404).send('URL bulunamadı.');
+    if (cachedData) {
+        urlEntry = JSON.parse(cachedData);
+        console.log('Redis cache hit');
+}   else {
+        urlEntry = await findByShortCode(shortCode);
+        if (!urlEntry) {
+            return res.status(404).send('URL bulunamadı.');
+        }
+        await redisClient.setEx(shortCode, 3600, JSON.stringify(urlEntry));
+        console.log('Redis cache miss, DB den çekildi ve cache’e eklendi');
     }
 
     if (!urlEntry.is_active) {
@@ -90,8 +101,7 @@ exports.redirectUrl = async (req, res) => {
       req.get('User-Agent') || '',
       req.get('Referer') || ''
     );
-
-
+    
     return res.redirect(urlEntry.original_url);
   } catch (error) {
     console.error('Redirect hata:', error);
