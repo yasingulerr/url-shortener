@@ -32,4 +32,11 @@ async function incrementClickCount(shortCode) {
   await pool.query(query, [shortCode]);
 }
 
-module.exports = { saveUrl, findByShortCode, isShortCodeExists, incrementClickCount };
+
+async function getUrlByShortCode(shortCode) {
+  const query = `SELECT * FROM urls WHERE short_code = $1`;
+  const result = await pool.query(query, [shortCode]);
+  return result.rows[0];
+}
+
+module.exports = { saveUrl, findByShortCode, isShortCodeExists, incrementClickCount, getUrlByShortCode };

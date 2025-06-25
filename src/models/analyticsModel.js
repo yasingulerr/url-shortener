@@ -9,15 +9,14 @@ async function saveAnalytics(urlId, ipAddress, userAgent, referer, country = nul
   await pool.query(query, values);
 }
 
-async function getAnalyticsByUrlId(shortCode) {
+async function getAnalyticsByUrlId(urlId) {
   const query = `
-    SELECT a.clicked_at, a.ip_address, a.user_agent, a.referer, a.country, a.city
-    FROM analytics a
-    JOIN urls u ON a.url_id = u.id
-    WHERE u.short_code = $1
-    ORDER BY a.clicked_at DESC;
+    SELECT clicked_at, ip_address, user_agent, referer, country, city
+    FROM analytics
+    WHERE url_id = $1
+    ORDER BY clicked_at DESC
   `;
-  const result = await pool.query(query, [shortCode]);
+  const result = await pool.query(query, [urlId]);
   return result.rows;
 }
 
