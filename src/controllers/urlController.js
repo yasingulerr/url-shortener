@@ -1,6 +1,6 @@
 const { generateShortCode } = require('../utils/shortCodeGenerator');
-const { saveUrl, findByShortCode, isShortCodeExists, incrementClickCount } = require('../models/urlModel');
-const {  saveAnalytics } = require('../models/analyticsModel');
+const { saveUrl, findByShortCode, isShortCodeExists, incrementClickCount, deleteUrlByShortCode } = require('../models/urlModel');
+const { saveAnalytics } = require('../models/analyticsModel');
 
 const { isUrlMalicious } = require('../utils/urlValidator'); // Malicious URL kontrolü
 const redisClient = require('../config/redis');
@@ -46,7 +46,9 @@ exports.shortenUrl = async (req, res) => {
   }
 
   try {
-    const saved = await saveUrl(customAlias, originalUrl, customAlias || null, expiresAt);
+    const userId = req.user.id; // auth middleware'den geliyor
+
+    const saved = await saveUrl(customAlias, originalUrl, customAlias || null, expiresAt, userId);
 
     return res.status(201).json({
       message: 'Kısa URL oluşturuldu',
@@ -64,20 +66,20 @@ exports.redirectUrl = async (req, res) => {
   const { shortCode } = req.params;
 
   try {
- // Önce Redis'ten cache kontrolü yap
-const cachedData = await redisClient.get(shortCode);
-let urlEntry;
+    // Önce Redis'ten cache kontrolü yap
+    const cachedData = await redisClient.get(shortCode);
+    let urlEntry;
 
     if (cachedData) {
-        urlEntry = JSON.parse(cachedData);
-        console.log('Redis cache hit');
-}   else {
-        urlEntry = await findByShortCode(shortCode);
-        if (!urlEntry) {
-            return res.status(404).send('URL bulunamadı.');
-        }
-        await redisClient.setEx(shortCode, 3600, JSON.stringify(urlEntry));
-        console.log('Redis cache miss, DB den çekildi ve cache’e eklendi');
+      urlEntry = JSON.parse(cachedData);
+      console.log('Redis cache hit');
+    } else {
+      urlEntry = await findByShortCode(shortCode);
+      if (!urlEntry) {
+        return res.status(404).send('URL bulunamadı.');
+      }
+      await redisClient.setEx(shortCode, 3600, JSON.stringify(urlEntry));
+      console.log('Redis cache miss, DB den çekildi ve cache’e eklendi');
     }
 
     if (!urlEntry.is_active) {
@@ -93,7 +95,7 @@ let urlEntry;
 
     // İstek atan IP adresini al
     const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.ip;
-    
+
     // Analytics kaydetme burada
     await saveAnalytics(
       urlEntry.id,
@@ -101,10 +103,32 @@ let urlEntry;
       req.get('User-Agent') || '',
       req.get('Referer') || ''
     );
-    
+
     return res.redirect(urlEntry.original_url);
   } catch (error) {
     console.error('Redirect hata:', error);
     return res.status(500).send('Sunucu hatası');
+  }
+};
+
+// Kullanıcının kendi oluşturduğu kısa URL'yi silmesi
+exports.deleteUrl = async (req, res) => {
+  const { shortCode } = req.params;
+  const userId = req.user.id; // auth middleware'den geliyor
+
+  try {
+    const deleted = await deleteUrlByShortCode(shortCode, userId);
+
+    if (!deleted) {
+      return res.status(403).json({ error: 'Silme yetkiniz yok veya URL bulunamadı' });
+    }
+
+    // Redis cache varsa sil
+    await redisClient.del(shortCode);
+
+    return res.status(200).json({ message: 'URL başarıyla silindi' });
+  } catch (error) {
+    console.error('Silme hatası:', error);
+    return res.status(500).json({ error: 'Sunucu hatası' });
   }
 };
